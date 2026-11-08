@@ -5,7 +5,7 @@ Beat 'em up 2D em pixel art, estilo Little Fighter 2. 3 heróis (Kael, Murilo, D
 ## Rodar no PC
 1. Instale o Godot 4.3 (https://godotengine.org/download).
 2. Abra a pasta como projeto e aperte F5.
-3. Teclado: 1/2/3 escolhe o herói · setas/WASD move (toque duplo corre) · Z soco · X chute · C pular · V energia · F especial · B defesa.
+3. Teclado: 1/2/3 escolhe o herói · setas/WASD move (toque duplo corre) · Z bater (combo) · C pular · V especial · B defesa.
 
 ## Build automático (GitHub Actions)
 - Pull request: compila o APK como artefato (aba Actions).

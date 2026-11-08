@@ -23,9 +23,10 @@ const DUR := {
 const LOOPS := ["idle", "walk", "run"]
 const ATK := {
 	"punch1": {"anim": "punch1", "hit": 1, "dmg": 7, "kb": 70, "knock": false, "next": "punch2"},
-	"punch2": {"anim": "punch2", "hit": 1, "dmg": 8, "kb": 80, "knock": false, "next": "punch3"},
+	"punch2": {"anim": "punch2", "hit": 1, "dmg": 8, "kb": 80, "knock": false, "next": "combokick"},
 	"punch3": {"anim": "punch3", "hit": 1, "dmg": 12, "kb": 260, "knock": true, "next": ""},
 	"kick": {"anim": "kick", "hit": 1, "dmg": 11, "kb": 190, "knock": false, "next": ""},
+	"combokick": {"anim": "kick", "hit": 1, "dmg": 11, "kb": 150, "knock": false, "next": "ball"},
 	"airkick": {"anim": "kick", "hit": 1, "dmg": 10, "kb": 230, "knock": true, "next": ""},
 	"dash": {"anim": "punch3", "hit": 1, "dmg": 13, "kb": 280, "knock": true, "next": "", "dash": 420},
 }
@@ -116,7 +117,7 @@ func _shot() -> void:
 
 # ------------------------------------------------------------ dados
 func E(ch: String, v: int, hp: float, run := false, o := {}) -> Dictionary:
-	var d := {"ch": ch, "v": v, "hp": int(round(hp * 0.5)), "run": run, "name": CH[ch].enemy.get(v, CH[ch].name)}
+	var d := {"ch": ch, "v": v, "hp": int(round(hp * 0.35)), "run": run, "name": CH[ch].enemy.get(v, CH[ch].name)}
 	d.merge(o, true)
 	return d
 
@@ -194,7 +195,7 @@ func mk(o: Dictionary) -> Dictionary:
 		"press": {"atk": 0, "kick": 0, "jump": 0, "spec": 0, "fire": 0},
 		"atkType": "", "chain": false, "hitDone": false, "stun": 0.0, "inv": 0.0, "lie": 0.0, "fade": 0.0,
 		"grounded": false, "airAtk": false, "fired": false, "spKind": "", "running": false, "ai": null,
-		"remove": false, "dropped": false}
+		"remove": false, "dropped": false, "comboT": 0.0, "comboNext": ""}
 	d.merge(o, true)
 	return d
 
@@ -228,7 +229,7 @@ func setup_stage(i: int) -> void:
 func start_game(ch: String) -> void:
 	var c: Dictionary = CH[ch]
 	STAGES = stages(ch)
-	player = mk({"team": 0, "ch": ch, "v": 0, "x": 140.0, "y": 420.0, "name": c.name, "hp": c.hp, "hpMax": c.hp, "spd": c.sp})
+	player = mk({"team": 0, "ch": ch, "v": 0, "x": 140.0, "y": 420.0, "name": c.name, "hp": c.hp, "hpMax": c.hp, "spd": c.sp, "dm": c.dm * 1.35})
 	setup_stage(0)
 	hintT = 6.0
 
@@ -320,6 +321,9 @@ func do_hit(a: Dictionary) -> void:
 		hit_target(a, t, d.dmg * a.dm, d.kb, d.knock, a, a.x + a.face * min(max(dx, 10.0), reach), "")
 
 func start_atk(f: Dictionary, type: String) -> void:
+	if type == "ball":
+		start_special(f, "ball", true)
+		return
 	var d: Dictionary = ATK[type]
 	f.st = "atk"; f.atkType = type; f.chain = false; f.hitDone = false; f.press.atk = 0; f.press.kick = 0
 	f.anim = ""
@@ -328,8 +332,10 @@ func start_atk(f: Dictionary, type: String) -> void:
 	f.vy = 0.0
 	snd("whoosh")
 
-func start_special(f: Dictionary, kind: String) -> void:
-	f.mp -= 25 if kind == "ball" else 40
+func start_special(f: Dictionary, kind: String, free := false) -> void:
+	if not free:
+		f.mp -= 25 if kind == "ball" else 40
+	f.comboT = 0.0
 	f.st = "spec"; f.spKind = kind; f.fired = false; f.vx = 0.0; f.vy = 0.0
 	set_anim(f, "special"); f.running = false
 	f.press.spec = 0; f.press.fire = 0
@@ -357,6 +363,8 @@ func land(f: Dictionary) -> void:
 func update_fighter(f: Dictionary, dt: float) -> void:
 	if f.inv > 0:
 		f.inv -= dt
+	if f.comboT > 0:
+		f.comboT -= dt
 	var i: Dictionary = f.in
 	if f.z > 0 or f.vz > 0:
 		f.vz -= G * dt
@@ -375,7 +383,10 @@ func update_fighter(f: Dictionary, dt: float) -> void:
 			elif f.press.jump:
 				f.press.jump = 0; f.st = "crouch"; f.t = 0.0; f.vx *= 0.9; set_anim(f, "jump"); f.fi = 0
 			elif f.press.atk:
-				start_atk(f, "dash" if f.running else "punch1")
+				if f.comboT > 0 and f.comboNext != "":
+					start_atk(f, f.comboNext)
+				else:
+					start_atk(f, "dash" if f.running else "punch1")
 			elif f.press.kick:
 				start_atk(f, "kick")
 			else:
@@ -421,6 +432,7 @@ func update_fighter(f: Dictionary, dt: float) -> void:
 					start_atk(f, d.next)
 				else:
 					f.st = "free"; f.atkType = ""; f.running = false
+					f.comboNext = d.next; f.comboT = 0.35
 			if f.airAtk and f.done:
 				f.fi = int(META[f.ch].anims.kick.n) - 1
 		"spec":
@@ -539,7 +551,7 @@ func spawn_wave(lst: Array) -> void:
 		var c: Dictionary = CH[d.ch]
 		var f := mk({"team": 1, "ch": d.ch, "v": d.v, "x": x, "y": ST.laneMin + rng.randf() * (ST.laneMax - ST.laneMin),
 			"name": d.name, "hp": d.hp, "hpMax": d.hp, "sc": d.get("sc", 1.25),
-			"mul": d.get("mul", 1.0) * (1.0 + 0.12 * stageIdx), "spd": c.sp, "dm": c.dm,
+			"mul": d.get("mul", 1.0) * 0.85 * (1.0 + 0.1 * stageIdx), "spd": c.sp, "dm": c.dm,
 			"ai": {"cd": 0.8 + rng.randf() * 1.2, "aggr": false, "runner": d.run, "defT": 0.0, "reacted": false}})
 		f.face = 1 if left else -1
 		fighters.append(f)
@@ -629,9 +641,9 @@ func _unhandled_input(e: InputEvent) -> void:
 				if now - lastTap.r < 260: runDir = 1
 				lastTap.r = now
 			if k == "z" or k == "j": set_press("atk")
-			if k == "x" or k == "k": set_press("kick")
+			if k == "x" or k == "k": set_press("atk")
 			if k == "c" or k == "space": set_press("jump")
-			if k == "v" or k == "l": set_press("spec")
+			if k == "v" or k == "l": set_press("fire")
 			if k == "f": set_press("fire")
 			if state == "menu":
 				if k == "1": start_game("kael")
@@ -664,12 +676,10 @@ func _unhandled_input(e: InputEvent) -> void:
 func buttons() -> Array:
 	var rx := VW - 20.0
 	return [
-		{"n": "atk", "x": rx - 70, "y": VH - 100, "r": 48, "l": "SOCO"},
-		{"n": "kick", "x": rx - 175, "y": VH - 70, "r": 40, "l": "CHUTE"},
-		{"n": "jump", "x": rx - 40, "y": VH - 215, "r": 40, "l": "PULO"},
-		{"n": "spec", "x": rx - 150, "y": VH - 175, "r": 36, "l": "ENERGIA"},
-		{"n": "fire", "x": rx - 255, "y": VH - 130, "r": 34, "l": "ESPECIAL"},
-		{"n": "def", "x": rx - 265, "y": VH - 230, "r": 32, "l": "DEFESA"},
+		{"n": "atk", "x": rx - 80, "y": VH - 100, "r": 56, "l": "BATER"},
+		{"n": "jump", "x": rx - 55, "y": VH - 225, "r": 40, "l": "PULO"},
+		{"n": "fire", "x": rx - 200, "y": VH - 80, "r": 44, "l": "ESPECIAL"},
+		{"n": "def", "x": rx - 185, "y": VH - 205, "r": 38, "l": "DEFESA"},
 	]
 
 func _touch_down(idx: int, pos: Vector2) -> void:
@@ -744,9 +754,6 @@ func bot_input() -> void:
 		player.face = 1 if dx >= 0 else -1
 		if abs(dy) < 20:
 			set_press("atk")
-	if player.mp >= 25 and abs(dx) > 150 and abs(dx) < 400 and abs(dy) < 14 and rng.randf() < 0.05:
-		player.face = 1 if dx >= 0 else -1
-		set_press("spec")
 
 func _run_bot_test() -> void:
 	rng.seed = 7
@@ -980,7 +987,7 @@ func draw_menu() -> void:
 			draw_texture_rect(tex, Rect2(r.position.x + 40, r.position.y + 14, 120, 122), false)
 		txt(CH[c].name, r.position.x + r.size.x / 2, r.position.y + 170, 24, Color.WHITE, "center")
 		txt(CH[c].desc, r.position.x + r.size.x / 2, r.position.y + 205, 16, Color("ffd24d"), "center")
-	txt("Teclado: 1/2/3 · Z soco · X chute · C pular · V energia · F especial · B defesa", VW / 2, VH - 40, 15, Color("cccccc"), "center")
+	txt("Teclado: 1/2/3 · Z bater (combo) · C pular · V especial · B defesa", VW / 2, VH - 40, 15, Color("cccccc"), "center")
 
 func draw_pad() -> void:
 	if stick.on:
@@ -1035,5 +1042,5 @@ func draw_hud() -> void:
 		txt("FASE %d COMPLETA!" % (stageIdx + 1), VW / 2, VH / 2 + 10, 32, Color("ffd24d"), "center")
 	if hintT > 0 and not show_pad:
 		draw_rect(Rect2(VW / 2 - 290, VH - 70, 580, 52), Color(0.03, 0.03, 0.08, 0.6))
-		txt("Setas/WASD: mover (toque duplo = correr) · Z soco · X chute · C pular", VW / 2, VH - 50, 13, Color.WHITE, "center")
-		txt("V energia · F especial · B defesa · corra + soco = ataque veloz", VW / 2, VH - 31, 13, Color("ffd24d"), "center")
+		txt("Setas/WASD: mover (toque duplo = correr) · Z bater · C pular", VW / 2, VH - 50, 13, Color.WHITE, "center")
+		txt("Bater 4x = soco, soco, chute e magia · V especial · B defesa", VW / 2, VH - 31, 13, Color("ffd24d"), "center")
