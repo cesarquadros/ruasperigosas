@@ -4,3 +4,5 @@
 *.keystore
 export_credentials.cfg
 android/build/
+build/
+dist/
