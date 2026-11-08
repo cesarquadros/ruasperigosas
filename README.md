@@ -5,9 +5,14 @@ Beat 'em up 2D em pixel art, estilo Little Fighter 2. 3 heróis (Kael, Murilo, D
 ## Rodar no PC
 1. Instale o Godot 4.3 (https://godotengine.org/download).
 2. Abra a pasta como projeto e aperte F5.
-3. Teclado: 1/2/3 escolhe o herói · setas/WASD move (toque duplo corre) · Z soco · X chute · C pular · V energia · F especial · B defesa.
+3. Teclado: 1/2/3 escolhe o herói · setas/WASD move (toque duplo corre) · Z bater (combo) · C pular · V especial · B defesa.
 
-## Gerar APK (Android)
+## Build automático (GitHub Actions)
+- Pull request: compila o APK como artefato (aba Actions).
+- Merge na `main`: cria a release `vX.Y.Z` com o APK e o AAB anexados. `feature/*` sobe a versão menor, os demais prefixos sobem o patch.
+- Para o AAB assinado, configure os segredos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` e `ANDROID_KEY_ALIAS`; sem eles usa chave temporária.
+
+## Gerar APK manualmente (Android)
 1. Instale o JDK 17 e o Android SDK (command-line tools, platform-tools, build-tools 34, platform 34).
 2. Godot → Editor → Gerenciar templates de exportação → baixe os da 4.3.
 3. Editor → Configurações do editor → Exportar → Android: aponte o SDK e o keystore de debug.
